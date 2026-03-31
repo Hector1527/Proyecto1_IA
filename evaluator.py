@@ -1,10 +1,11 @@
 """
 evaluator.py
-K-Folds Cross Validation implementado manualmente.
-Cálculo de Precisión, Recall, F1-Score, Accuracy y Matriz de Confusión.
+Manual K-Folds cross validation.
+Computes Precision, Recall, F1-Score, Accuracy, and Confusion Matrix.
 """
 
 import math
+import random
 from collections import defaultdict
 
 
@@ -14,8 +15,8 @@ from collections import defaultdict
 
 def k_folds_split(n: int, k: int) -> list[tuple[list[int], list[int]]]:
     """
-    Divide los índices 0..n-1 en K folds.
-    Devuelve lista de (train_indices, val_indices).
+    Split indices 0..n-1 into K folds.
+    Returns a list of (train_indices, val_indices).
     """
     indices = list(range(n))
     fold_size = n // k
@@ -23,7 +24,7 @@ def k_folds_split(n: int, k: int) -> list[tuple[list[int], list[int]]]:
 
     for i in range(k):
         start = i * fold_size
-        # El último fold toma el resto si n no es divisible entre k
+        # The last fold takes the remainder if n is not divisible by k
         end = start + fold_size if i < k - 1 else n
         val_indices = indices[start:end]
         train_indices = indices[:start] + indices[end:]
@@ -32,14 +33,45 @@ def k_folds_split(n: int, k: int) -> list[tuple[list[int], list[int]]]:
     return folds
 
 
+def stratified_k_folds_split(
+    labels: list[str],
+    k: int,
+    seed: int = 42,
+) -> list[tuple[list[int], list[int]]]:
+    """
+    Split indices into K folds while approximately preserving
+    the class proportions in each partition.
+    """
+    indices_by_class = defaultdict(list)
+    for idx, label in enumerate(labels):
+        indices_by_class[label].append(idx)
+
+    rng = random.Random(seed)
+    per_fold = [[] for _ in range(k)]
+
+    for class_indices in indices_by_class.values():
+        rng.shuffle(class_indices)
+        for pos, idx in enumerate(class_indices):
+            per_fold[pos % k].append(idx)
+
+    all_indices = set(range(len(labels)))
+    folds = []
+    for val_indices in per_fold:
+        val_indices = sorted(val_indices)
+        train_indices = sorted(all_indices - set(val_indices))
+        folds.append((train_indices, val_indices))
+
+    return folds
+
+
 # ------------------------------------------------------------------
-# MÉTRICAS
+# METRICS
 # ------------------------------------------------------------------
 
 def confusion_matrix(y_true: list[str], y_pred: list[str], classes: list[str]) -> dict:
     """
-    Construye la matriz de confusión.
-    Retorna dict[true_class][pred_class] = count
+    Build the confusion matrix.
+    Returns dict[true_class][pred_class] = count
     """
     matrix = {cls: {c: 0 for c in classes} for cls in classes}
     for true, pred in zip(y_true, y_pred):
@@ -50,15 +82,15 @@ def confusion_matrix(y_true: list[str], y_pred: list[str], classes: list[str]) -
 
 def compute_metrics(y_true: list[str], y_pred: list[str], classes: list[str]) -> dict:
     """
-    Calcula Precisión, Recall y F1-Score por clase,
-    Accuracy global y Macro F1.
+    Compute per-class Precision, Recall, and F1-Score,
+    plus global Accuracy and Macro F1.
 
-    Fórmulas:
-        Precisión(c) = TP(c) / (TP(c) + FP(c))
+    Formulas:
+        Precision(c) = TP(c) / (TP(c) + FP(c))
         Recall(c)    = TP(c) / (TP(c) + FN(c))
         F1(c)        = 2 * P(c) * R(c) / (P(c) + R(c))
         Accuracy     = sum(TP) / total
-        Macro F1     = mean(F1 por clase)
+        Macro F1     = mean(F1 by class)
     """
     cm = confusion_matrix(y_true, y_pred, classes)
     metrics = {}
@@ -97,7 +129,7 @@ def compute_metrics(y_true: list[str], y_pred: list[str], classes: list[str]) ->
 
 def average_metrics(fold_results: list[dict], classes: list[str]) -> dict:
     """
-    Promedia las métricas de todos los folds de K-Folds.
+    Average metrics across all K-Folds results.
     """
     avg = {
         'per_class': {cls: {'precision': 0.0, 'recall': 0.0, 'f1': 0.0}
@@ -122,7 +154,7 @@ def average_metrics(fold_results: list[dict], classes: list[str]) -> dict:
     avg['accuracy']  = round(avg['accuracy'] / k, 4)
     avg['macro_f1']  = round(avg['macro_f1'] / k, 4)
 
-    # Desviación estándar (análisis de varianza entre folds)
+    # Standard deviation across folds
     avg['std_accuracy'] = round(_std(accuracies), 4)
     avg['std_macro_f1'] = round(_std(macro_f1s), 4)
 
@@ -142,9 +174,9 @@ def _std(values: list[float]) -> float:
 
 
 def print_report(results: dict, classes: list[str], fold_results: list[dict] = None):
-    """Imprime un reporte legible en consola."""
+    """Print a readable console report."""
     print("\n" + "=" * 60)
-    print("REPORTE DE EVALUACIÓN")
+    print("EVALUATION REPORT")
     print("=" * 60)
 
     print(f"\nAccuracy global : {results['accuracy']:.4f}")
@@ -153,15 +185,15 @@ def print_report(results: dict, classes: list[str], fold_results: list[dict] = N
         print(f"Std Accuracy    : {results['std_accuracy']:.4f}")
         print(f"Std Macro F1    : {results['std_macro_f1']:.4f}")
 
-    print("\nMétricas por clase:")
-    print(f"{'Clase':<20} {'Precision':>10} {'Recall':>10} {'F1':>10}")
+    print("\nPer-class metrics:")
+    print(f"{'Class':<20} {'Precision':>10} {'Recall':>10} {'F1':>10}")
     print("-" * 52)
     for cls in classes:
         m = results['per_class'][cls]
         print(f"{cls:<20} {m['precision']:>10.4f} {m['recall']:>10.4f} {m['f1']:>10.4f}")
 
     if 'confusion_matrix' in results:
-        print("\nMatriz de Confusión (filas=real, columnas=predicho):")
+        print("\nConfusion Matrix (rows=true, columns=predicted):")
         cm = results['confusion_matrix']
         header = f"{'':>20}" + "".join(f"{c[:8]:>10}" for c in classes)
         print(header)
@@ -172,6 +204,6 @@ def print_report(results: dict, classes: list[str], fold_results: list[dict] = N
             print(row)
 
     if fold_results:
-        print("\nAccuracy por fold:")
+        print("\nAccuracy by fold:")
         for i, r in enumerate(fold_results, 1):
             print(f"  Fold {i}: {r['accuracy']:.4f}  |  Macro F1: {r['macro_f1']:.4f}")

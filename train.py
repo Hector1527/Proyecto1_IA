@@ -1,68 +1,74 @@
 """
 train.py
-Script de entrenamiento completo:
-  1. Carga y preprocesa el dataset
-  2. Ejecuta K-Folds Cross Validation (K=5)
-  3. Entrena el modelo final con todos los datos
-  4. Guarda el modelo en model.pkl
+Full training script:
+  1. Load and preprocess the dataset
+  2. Run K-Folds cross validation (K=5)
+  3. Train the final model on all data
+  4. Save the model to model.pkl
 """
 
 import pickle
 import random
 import pandas as pd
 
-from preprocessor import preprocess
+from preprocessor import preprocess_ticket
 from naive_bayes import NaiveBayesClassifier
-from evaluator import k_folds_split, compute_metrics, average_metrics, print_report
+from evaluator import stratified_k_folds_split, compute_metrics, average_metrics, print_report
 
 # ------------------------------------------------------------------
-# CONFIGURACIÓN
+# CONFIGURATION
 # ------------------------------------------------------------------
-DATASET_PATH = 'customer_support_tickets.csv'   # <-- Cambia este nombre si tu CSV se llama diferente
+DATASET_PATH = 'customer_support_tickets.csv'   # Change this if your CSV uses a different name
 MODEL_PATH   = 'model.pkl'
 K            = 5
 RANDOM_SEED  = 42
+SUBJECT_WEIGHT = 1
+MIN_TOKEN_FREQUENCY = 1
 
-# Columnas del dataset (ajusta si tu CSV las llama diferente)
-TEXT_COLS  = ['Ticket Subject', 'Ticket Description']  # Se concatenan
+# Dataset columns
+TEXT_COLS  = ['Ticket Subject', 'Ticket Description']
 LABEL_COL  = 'Ticket Type'
 
-# Clases esperadas (según el proyecto)
+# Expected classes from the dataset
 CLASSES = ['Technical issue', 'Billing inquiry', 'Product inquiry',
            'Refund request', 'Cancellation request']
 
 
 # ------------------------------------------------------------------
-# CARGA Y PREPROCESAMIENTO
+# DATA LOADING AND PREPROCESSING
 # ------------------------------------------------------------------
 
 def load_data(path: str):
-    print(f"[1/4] Cargando dataset desde '{path}'...")
+    print(f"[1/4] Loading dataset from '{path}'...")
     df = pd.read_csv(path)
 
-    print(f"      Filas totales: {len(df)}")
-    print(f"      Distribución de clases:\n{df[LABEL_COL].value_counts()}\n")
+    print(f"      Total rows: {len(df)}")
+    print(f"      Class distribution:\n{df[LABEL_COL].value_counts()}\n")
 
-    # Eliminar filas con texto o etiqueta vacíos
+    # Remove rows with missing label
     df = df.dropna(subset=[LABEL_COL])
     for col in TEXT_COLS:
         df[col] = df[col].fillna('')
 
-    # Concatenar columnas de texto
-    df['full_text'] = df[TEXT_COLS].apply(lambda row: ' '.join(row.values), axis=1)
-
-    # Filtrar solo las clases esperadas (por si el dataset tiene otras)
+    # Keep only the expected classes in case the dataset contains others
     df = df[df[LABEL_COL].isin(CLASSES)].reset_index(drop=True)
-    print(f"      Filas después de filtrar: {len(df)}\n")
+    print(f"      Rows after filtering: {len(df)}\n")
 
-    return df['full_text'].tolist(), df[LABEL_COL].tolist()
+    return (
+        df[TEXT_COLS[0]].tolist(),
+        df[TEXT_COLS[1]].tolist(),
+        df[LABEL_COL].tolist(),
+    )
 
 
-def preprocess_corpus(texts: list[str]) -> list[list[str]]:
-    print("[2/4] Preprocesando textos...")
-    processed = [preprocess(t) for t in texts]
+def preprocess_corpus(subjects: list[str], descriptions: list[str]) -> list[list[str]]:
+    print("[2/4] Preprocessing text...")
+    processed = [
+        preprocess_ticket(subject, description, subject_weight=SUBJECT_WEIGHT)
+        for subject, description in zip(subjects, descriptions)
+    ]
     avg_tokens = sum(len(d) for d in processed) / len(processed)
-    print(f"      Promedio de tokens por documento: {avg_tokens:.1f}\n")
+    print(f"      Average tokens per document: {avg_tokens:.1f}\n")
     return processed
 
 
@@ -71,17 +77,17 @@ def preprocess_corpus(texts: list[str]) -> list[list[str]]:
 # ------------------------------------------------------------------
 
 def run_k_folds(documents, labels, k=K):
-    print(f"[3/4] Ejecutando {k}-Folds Cross Validation...")
+    print(f"[3/4] Running {k}-Folds Cross Validation...")
     classes = list(set(labels))
 
-    # Mezclar los datos de forma reproducible
+    # Shuffle data reproducibly
     random.seed(RANDOM_SEED)
     combined = list(zip(documents, labels))
     random.shuffle(combined)
     documents, labels = zip(*combined)
     documents, labels = list(documents), list(labels)
 
-    folds = k_folds_split(len(documents), k)
+    folds = stratified_k_folds_split(labels, k, seed=RANDOM_SEED)
     fold_results = []
 
     for i, (train_idx, val_idx) in enumerate(folds, 1):
@@ -90,13 +96,13 @@ def run_k_folds(documents, labels, k=K):
         val_docs     = [documents[j] for j in val_idx]
         val_labels   = [labels[j]    for j in val_idx]
 
-        model = NaiveBayesClassifier()
+        model = NaiveBayesClassifier(min_token_frequency=MIN_TOKEN_FREQUENCY)
         model.fit(train_docs, train_labels)
         predictions = model.predict(val_docs)
 
         result = compute_metrics(val_labels, predictions, classes)
         fold_results.append(result)
-        print(f"  Fold {i}/{k} — Accuracy: {result['accuracy']:.4f} | Macro F1: {result['macro_f1']:.4f}")
+        print(f"  Fold {i}/{k} - Accuracy: {result['accuracy']:.4f} | Macro F1: {result['macro_f1']:.4f}")
 
     avg = average_metrics(fold_results, classes)
     print_report(avg, classes, fold_results)
@@ -105,19 +111,19 @@ def run_k_folds(documents, labels, k=K):
 
 
 # ------------------------------------------------------------------
-# ENTRENAMIENTO FINAL Y GUARDADO
+# FINAL TRAINING AND MODEL SAVING
 # ------------------------------------------------------------------
 
 def train_final_model(documents, labels):
-    print("\n[4/4] Entrenando modelo final con todos los datos...")
-    model = NaiveBayesClassifier()
+    print("\n[4/4] Training final model on all data...")
+    model = NaiveBayesClassifier(min_token_frequency=MIN_TOKEN_FREQUENCY)
     model.fit(documents, labels)
-    print(f"      Vocabulario: {len(model.vocabulary):,} palabras")
-    print(f"      Clases: {model.classes}")
+    print(f"      Vocabulary: {len(model.vocabulary):,} words")
+    print(f"      Classes: {model.classes}")
 
     with open(MODEL_PATH, 'wb') as f:
         pickle.dump(model.to_dict(), f)
-    print(f"      Modelo guardado en '{MODEL_PATH}'\n")
+    print(f"      Model saved to '{MODEL_PATH}'\n")
 
     return model
 
@@ -127,11 +133,11 @@ def train_final_model(documents, labels):
 # ------------------------------------------------------------------
 
 if __name__ == '__main__':
-    texts, labels = load_data(DATASET_PATH)
-    documents     = preprocess_corpus(texts)
+    subjects, descriptions, labels = load_data(DATASET_PATH)
+    documents     = preprocess_corpus(subjects, descriptions)
     fold_results, avg_metrics, documents, labels = run_k_folds(documents, labels)
     model = train_final_model(documents, labels)
 
-    print("✓ Entrenamiento completado exitosamente.")
-    print(f"  Accuracy promedio (K-Folds): {avg_metrics['accuracy']:.4f} ± {avg_metrics['std_accuracy']:.4f}")
-    print(f"  Macro F1 promedio (K-Folds): {avg_metrics['macro_f1']:.4f} ± {avg_metrics['std_macro_f1']:.4f}")
+    print("Training completed successfully.")
+    print(f"  Average Accuracy (K-Folds): {avg_metrics['accuracy']:.4f} ± {avg_metrics['std_accuracy']:.4f}")
+    print(f"  Average Macro F1 (K-Folds): {avg_metrics['macro_f1']:.4f} ± {avg_metrics['std_macro_f1']:.4f}")
