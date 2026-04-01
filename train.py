@@ -18,7 +18,7 @@ from evaluator import stratified_k_folds_split, compute_metrics, average_metrics
 # ------------------------------------------------------------------
 # CONFIGURATION
 # ------------------------------------------------------------------
-DATASET_PATH = 'customer_support_tickets.csv'   # Change this if your CSV uses a different name
+DATASET_PATH = 'Bitext_Sample_Customer_Support_Training_Dataset_27K_responses-v11.csv'
 MODEL_PATH   = 'model.pkl'
 K            = 5
 RANDOM_SEED  = 42
@@ -26,12 +26,11 @@ SUBJECT_WEIGHT = 1
 MIN_TOKEN_FREQUENCY = 1
 
 # Dataset columns
-TEXT_COLS  = ['Ticket Subject', 'Ticket Description']
-LABEL_COL  = 'Ticket Type'
+TEXT_COLS    = ['instruction']
+LABEL_COL    = 'category'
 
 # Expected classes from the dataset
-CLASSES = ['Technical issue', 'Billing inquiry', 'Product inquiry',
-           'Refund request', 'Cancellation request']
+CLASSES = None
 
 
 # ------------------------------------------------------------------
@@ -47,16 +46,15 @@ def load_data(path: str):
 
     # Remove rows with missing label
     df = df.dropna(subset=[LABEL_COL])
-    for col in TEXT_COLS:
-        df[col] = df[col].fillna('')
+    df[TEXT_COLS[0]] = df[TEXT_COLS[0]].fillna('')
 
-    # Keep only the expected classes in case the dataset contains others
-    df = df[df[LABEL_COL].isin(CLASSES)].reset_index(drop=True)
+    if CLASSES:
+        df = df[df[LABEL_COL].isin(CLASSES)].reset_index(drop=True)
     print(f"      Rows after filtering: {len(df)}\n")
 
     return (
+        [''] * len(df),
         df[TEXT_COLS[0]].tolist(),
-        df[TEXT_COLS[1]].tolist(),
         df[LABEL_COL].tolist(),
     )
 

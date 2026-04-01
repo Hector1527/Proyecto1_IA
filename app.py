@@ -118,7 +118,7 @@ def classify():
     return jsonify({
         'ticket_id':     ticket_id,
         'subject':       subject,
-        'normalized_text': text,
+        'normalized_text': ' '.join(tokens),
         'category':      category,
         'probabilities': sorted_probs,
         'tokens_used':   len(tokens),
