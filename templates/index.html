@@ -47,15 +47,17 @@
       <section class="panel form-panel">
         <div class="panel-heading">
           <p class="kicker">New ticket</p>
-          <h2>Submit request</h2>
+          <h2>Send request</h2>
         </div>
 
         <form id="ticketForm" class="ticket-form">
           <div class="field-group compact-grid">
-            <label class="field">
+            <div class="field generated-ticket">
               <span>Ticket ID</span>
-              <input id="ticketId" name="ticketId" type="text" readonly>
-            </label>
+              <div class="generated-ticket-box">
+                <strong id="nextTicketLabel">Generated automatically when sent</strong>
+              </div>
+            </div>
 
             <label class="field">
               <span>Channel</span>
@@ -98,7 +100,7 @@
           </div>
 
           <div class="form-actions">
-            <button type="submit" class="primary-btn">Classify ticket</button>
+            <button type="submit" class="primary-btn">Send ticket</button>
             <button type="button" id="clearBtn" class="secondary-btn">Clear</button>
           </div>
         </form>
@@ -111,7 +113,7 @@
         </div>
 
         <div id="emptyState" class="empty-state">
-          <p>Submit a ticket to see the predicted category and class probability distribution.</p>
+          <p id="emptyStateMessage">Submit a ticket to see the predicted category and class probability distribution.</p>
         </div>
 
         <div id="resultState" class="result-state hidden">
@@ -121,12 +123,27 @@
               <strong id="resultTicketId">-</strong>
             </div>
             <div>
-              <span class="meta-label">Predicted category</span>
+              <span class="meta-label">Suggested routing</span>
               <strong id="resultCategory" class="result-badge">-</strong>
             </div>
             <div>
               <span class="meta-label">Tokens used</span>
               <strong id="resultTokens">-</strong>
+            </div>
+          </div>
+
+          <div class="result-summary secondary-summary">
+            <div>
+              <span class="meta-label">Channel</span>
+              <strong id="resultChannel">-</strong>
+            </div>
+            <div>
+              <span class="meta-label">Created at</span>
+              <strong id="resultCreatedAt">-</strong>
+            </div>
+            <div>
+              <span class="meta-label">Subject</span>
+              <strong id="resultSubject">-</strong>
             </div>
           </div>
 
@@ -142,6 +159,36 @@
         </div>
       </section>
     </main>
+
+    <section class="panel tickets-panel">
+      <div class="panel-heading tickets-heading">
+        <div>
+          <p class="kicker">Ticket center</p>
+          <h2>Stored tickets</h2>
+        </div>
+
+        <div class="ticket-search">
+          <input
+            id="ticketLookupInput"
+            type="text"
+            placeholder="Find ticket by ID"
+            autocomplete="off"
+          >
+          <button type="button" id="ticketLookupBtn" class="secondary-btn">Open ticket</button>
+        </div>
+      </div>
+
+      <div class="ticket-list-meta">
+        <span>Total tickets</span>
+        <strong id="ticketCount">0</strong>
+      </div>
+
+      <div id="ticketListEmpty" class="empty-state">
+        <p id="ticketListEmptyMessage">No tickets have been sent yet. New tickets will accumulate here.</p>
+      </div>
+
+      <div id="ticketList" class="ticket-list hidden"></div>
+    </section>
   </div>
 
   <script src="{{ url_for('static', filename='app.js') }}"></script>
